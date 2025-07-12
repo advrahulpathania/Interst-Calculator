@@ -1,0 +1,224 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solitaire Claim Amount Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4 max-w-4xl">
+        <h1 class="text-3xl font-bold text-center mb-6">Solitaire Claim Amount Calculator</h1>
+        
+        <!-- Form Section -->
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="mb-4">
+                <label class="block text-lg font-medium mb-2">Calculation Type:</label>
+                <select id="calcType" class="w-full p-2 border rounded" onchange="toggleForm()">
+                    <option value="normal">Normal Return (8% Interest)</option>
+                    <option value="assured">Assured Return (Custom Interest)</option>
+                </select>
+            </div>
+
+            <!-- Normal Return Form -->
+            <div id="normalForm" class="space-y-4">
+                <div id="receipts" class="space-y-4">
+                    <div class="receipt flex flex-col md:flex-row gap-4">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium">Payment Receipt Date:</label>
+                            <input type="date" class="date-input w-full p-2 border rounded" required>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium">Principal Amount (₹):</label>
+                            <input type="number" class="principal-input w-full p-2 border rounded" min="0" required>
+                        </div>
+                        <button class="remove-receipt bg-red-500 text-white px-4 py-2 rounded mt-4 md:mt-0" onclick="removeReceipt(this)" disabled>Remove</button>
+                    </div>
+                </div>
+                <button id="addReceipt" class="bg-blue-500 text-white px-4 py-2 rounded">Add Another Receipt</button>
+            </div>
+
+            <!-- Assured Return Form -->
+            <div id="assuredForm" class="hidden space-y-4">
+                <div>
+                    <label class="block text-sm font-medium">Payment Receipt Date:</label>
+                    <input type="date" id="assuredDate" class="w-full p-2 border rounded" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Principal Amount (₹):</label>
+                    <input type="number" id="assuredPrincipal" class="w-full p-2 border rounded" min="0" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Interest Rate (% as per MOU):</label>
+                    <input type="number" id="assuredRate" class="w-full p-2 border rounded" min="0" step="0.01" required>
+                </div>
+            </div>
+
+            <button id="calculate" class="bg-green-500 text-white px-6 py-2 rounded mt-4 w-full">Calculate</button>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="hidden bg-white p-6 rounded-lg shadow-md mt-6">
+            <h2 class="text-xl font-semibold mb-4">Calculation Results</h2>
+            <p><span class="font-medium">Number of Receipts:</span> <span id="numReceipts">0</span></p>
+            <p><span class="font-medium">Total Interest Days:</span> <span id="totalDays">0</span></p>
+            <p><span class="font-medium">Total Principal:</span> ₹<span id="totalPrincipal">0</span></p>
+            <p><span class="font-medium">Total Interest:</span> ₹<span id="totalInterest">0</span></p>
+            <p><span class="font-medium">Total Claim Amount:</span> ₹<span id="totalAmount">0</span></p>
+            <div class="mt-4">
+                <h3 class="text-lg font-semibold">Notes:</h3>
+                <ul class="list-disc pl-5 text-sm text-gray-700">
+                    <li>Interest is calculated up to the commencement of CIRP, i.e., 03.06.2025.</li>
+                    <li>Assured returns are applicable only to those claimants whose MoU specifically provides for it.</li>
+                    <li>The above calculation is for informational purposes only and does not represent the verified/admitted claim amount.</li>
+                    <li>In case of any discrepancy, please contact <a href="mailto:ip.solitairecirp@gmail.com" class="text-blue-500 underline">ip.solitairecirp@gmail.com</a>.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Toggle between Normal and Assured Return forms
+        function toggleForm() {
+            const calcType = document.getElementById('calcType').value;
+            document.getElementById('normalForm').classList.toggle('hidden', calcType === 'assured');
+            document.getElementById('assuredForm').classList.toggle('hidden', calcType === 'normal');
+        }
+
+        // Add new receipt entry
+        document.getElementById('addReceipt').addEventListener('click', () => {
+            const receipts = document.getElementById('receipts');
+            const newReceipt = document.createElement('div');
+            newReceipt.className = 'receipt flex flex-col md:flex-row gap-4';
+            newReceipt.innerHTML = `
+                <div class="flex-1">
+                    <label class="block text-sm font-medium">Payment Receipt Date:</label>
+                    <input type="date" class="date-input w-full p-2 border rounded" required>
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium">Principal Amount (₹):</label>
+                    <input type="number" class="principal-input w-full p-2 border rounded" min="0" required>
+                </div>
+                <button class="remove-receipt bg-red-500 text-white px-4 py-2 rounded mt-4 md:mt-0" onclick="removeReceipt(this)">Remove</button>
+            `;
+            receipts.appendChild(newReceipt);
+            updateRemoveButtons();
+        });
+
+        // Remove receipt entry
+        function removeReceipt(button) {
+            button.parentElement.remove();
+            updateRemoveButtons();
+        }
+
+        // Enable/Disable remove buttons (disable if only one receipt)
+        function updateRemoveButtons() {
+            const removeButtons = document.querySelectorAll('.remove-receipt');
+            const isDisabled = removeButtons.length === 1;
+            removeButtons.forEach(button => button.disabled = isDisabled);
+        }
+
+        // Calculate days between two dates
+        function calculateDays(startDate, endDate) {
+            const diffTime = endDate - startDate;
+            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        // Calculate simple interest: I = P * R * T (T in years)
+        function calculateInterest(principal, rate, days) {
+            const years = days / 365;
+            return (principal * rate * years) / 100;
+        }
+
+        // Format number with Indian comma separators
+        function formatNumber(num) {
+            return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+        }
+
+        // Calculate button event
+        document.getElementById('calculate').addEventListener('click', () => {
+            const calcType = document.getElementById('calcType').value;
+            const endDate = new Date('2025-06-03');
+            let totalPrincipal = 0;
+            let totalInterest = 0;
+            let totalDays = 0;
+            let numReceipts = 0;
+
+            if (calcType === 'normal') {
+                const receipts = document.querySelectorAll('.receipt');
+                numReceipts = receipts.length;
+                for (const receipt of receipts) {
+                    const date = new Date(receipt.querySelector('.date-input').value);
+                    const principal = parseFloat(receipt.querySelector('.principal-input').value) || 0;
+                    if (date && principal > 0) {
+                        const days = calculateDays(date, endDate);
+                        const interest = calculateInterest(principal, 8, days);
+                        totalPrincipal += principal;
+                        totalInterest += interest;
+                        totalDays += days;
+                    } else {
+                        numReceipts--;
+                    }
+                }
+            } else {
+                const date = new Date(document.getElementById('assuredDate').value);
+                const principal = parseFloat(document.getElementById('assuredPrincipal').value) || 0;
+                const rate = parseFloat(document.getElementById('assuredRate').value) || 0;
+                if (date && principal > 0 && rate > 0) {
+                    numReceipts = 1;
+                    totalDays = calculateDays(date, endDate);
+                    totalPrincipal = principal;
+                    totalInterest = calculateInterest(principal, rate, totalDays);
+                }
+            }
+
+            // Display results
+            document.getElementById('numReceipts').textContent = numReceipts;
+            document.getElementById('totalDays').textContent = totalDays;
+            document.getElementById('totalPrincipal').textContent = formatNumber(totalPrincipal);
+            document.getElementById('totalInterest').textContent = formatNumber(totalInterest);
+            document.getElementById('totalAmount').textContent = formatNumber(totalPrincipal + totalInterest);
+            document.getElementById('results').classList.remove('hidden');
+        });
+    </script>
+</body>
+</html>
